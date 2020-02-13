@@ -240,6 +240,148 @@
         });
     }
 </script>
-
+@Resource
+    private MessageBordService messageBordService;
+    @Resource
+    private WebsiteMessageService websiteMessageService;
+    private int pagenum=1;//页数
+    private int msgnum=1;//留言页数
+    private Long msgId;//公告的Id
+    private Long parentId;//回复留言的Id
+    private Integer type;//1: 留言 （评论）2:回复
+    private String leave;//留言(评论)//回复
+    
+    
+    
+    private MessageBord msg=null;
+    @UnLogin
+    public String index(){
+        List<WebsiteMessage> webMessages = websiteMessageService.listLateWebMessage(CommonVar.WEBSITEMESSAGE,type);
+        setAttribute("webMessages", webMessages);
+        WebsiteMessage websiteMessage = websiteMessageService.get(id);
+        setAttribute("websiteMessage", websiteMessage);
+        setAttribute("type", type);
+        return "index";
+    }
+        /*if(value==1)
+        return '媒体报道';
+        if(value==2)
+        return '网站公告';
+        if(value==3)
+        return '成功案例';
+        if(value==4)
+        return '站内信息';*/
+    @UnLogin
+    public String cgIndex(){
+        Pager pager=new Pager();
+        pager.setPageNumber(pagenum);
+        pager.setPageSize(8);
+        DetachedCriteria de=DetachedCriteria.forClass(WebsiteMessage.class);
+        de.add(Restrictions.eq("isDelete", 0));
+        de.add(Restrictions.eq("mtype", type));
+        Pager list = websiteMessageService.findByPager(pager, de);
+        setAttribute("webMessages", list);
+        if(null!=id){
+            WebsiteMessage websiteMessage = websiteMessageService.get(id);
+            setAttribute("websiteMessage", websiteMessage);
+            Set<SystemNoticeWeb> systemNoticeWebs = websiteMessage.getSystemNoticeWebs();
+            setAttribute("notices", systemNoticeWebs);
+        }
+        setAttribute("type", type);
+        setAttribute("pagenum", pagenum);
+        //获取5留言(评论)
+        if(null!=id){
+            Pager msgPager=new Pager();
+            msgPager.setPageNumber(msgnum);
+            msgPager.setPageSize(4);//每页四条数据
+            DetachedCriteria msgde=DetachedCriteria.forClass(MessageBord.class);
+            msgde.add(Restrictions.eq("websiteMessage",websiteMessageService.get(id)));
+            msgde.add(Restrictions.eq("type", 1));
+            msgde.add(Restrictions.isNull("parentId"));
+            Pager msgList = messageBordService.findByPager(msgPager, msgde);
+            List<MessageBord> mbs = msgList.getList();
+            if(mbs!=null&&mbs.size()>=1){
+                setAttribute("id", id);
+                setAttribute("msgList", msgList);//用于取页数
+                setAttribute("plNum", mbs.size());//评论条数
+                getReplay(mbs,id);
+            }
+            Long totalNumber = websiteMessageService.getTotalNumber(Long.valueOf(id));
+            setAttribute("plNum", totalNumber);
+        }
+        return "index";
+    }
+    //所有的回复
+    private void getReplay(List<MessageBord> mbs,Long msgId){
+        //取出每条评论的回复存入集合
+        Map<String,List<MessageBord>>map=new HashMap<String,List<MessageBord>>();
+        for (MessageBord messageBord : mbs) {
+            //获取每条评论
+            DetachedCriteria hude=DetachedCriteria.forClass(MessageBord.class);
+            hude.add(Restrictions.eq("websiteMessage", websiteMessageService.get(id)));
+            hude.add(Restrictions.eq("type", 2));
+            hude.add(Restrictions.eq("parentId", messageBord.getId()));
+            List<MessageBord> pls = messageBordService.getL(hude, -1);
+            String key=messageBord.getId().toString();
+            map.put(key, pls);
+            setAttribute("map", map);
+        }
+    }
+     //保存回复
+    public void saveReplay(){
+        try{
+            msg=new MessageBord();
+            LoanUser user=(LoanUser) getSession("loginUser");
+             msg.setLeave(this.leave);
+             msg.setParentId(this.parentId);
+             msg.setType(this.type);
+             msg.setUid(user);
+             msg.setTime(new Date());
+             msg.setZan(0);
+             msg.setWebsiteMessage(new WebsiteMessage(msgId));
+             messageBordService.save(msg);
+             super.ajaxJson(DbRecord.jsonShowInfo(true, "留言成功"));
+        }catch (Exception e) {
+            super.ajaxJson(DbRecord.jsonShowInfo(false, "留言失败"));
+        }
+    }
+    //保存评论
+    public void savePL(){
+        if(this.leave.length()>300){
+            super.ajaxJson(DbRecord.jsonShowInfo(false, "不能大于300字"));
+            return;
+        }
+        JSONObject json=new JSONObject();
+        try{
+            LoanUser user=(LoanUser) getSession("loginUser");
+            msg=new MessageBord();
+            msg.setLeave(this.leave);
+            msg.setTime(new Date());
+            msg.setType(1);
+            msg.setUid(user);
+            msg.setWebsiteMessage(new WebsiteMessage(msgId));
+            msg.setZan(0);
+            Long save = messageBordService.save(msg);
+            json.put("success", true);
+            json.put("message", "评论成功");
+            json.put("savePlId", save);
+             super.ajaxJson(json.toString());
+        }catch (Exception e) {
+            super.ajaxJson(DbRecord.jsonShowInfo(false, "评论失败"));
+        } 
+    }
+    //赞
+    public void zan(){
+        try{
+            if(null!=id){
+                MessageBord messageBord = messageBordService.get(id);
+                messageBord.setZan((messageBord.getZan()+1));
+                messageBordService.update(messageBord);
+                super.ajaxJson(DbRecord.jsonShowInfo(true, "赞成功"));
+            }
+        }catch (Exception e) {
+            super.ajaxJson(DbRecord.jsonShowInfo(false, "赞失败"));
+        }
+    }
    </body> 
 </html>
